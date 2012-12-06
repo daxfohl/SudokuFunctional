@@ -14,7 +14,7 @@ namespace SudokuFunctional {
             return grid.Sum(c => c.PopCount());
         }
         public static int Max(this int i) {
-            return Enumerable.Range(0, 32).Last(ii => ((1 << ii) & i) == i);
+            return Enumerable.Range(0, 32).Last(ii => ((1 << ii) | i) == i);
         }
     }
 }

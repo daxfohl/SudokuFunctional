@@ -4,38 +4,37 @@ using System.Linq;
 
 namespace SudokuFunctional {
     static class Sudoku {
-        public const int SideLen = SideLenQuarter * SideLenQuarter;
-        public const int SideLenQuarter = 3;
+        public const int SideLen = SideLenQuarter*SideLenQuarter;
+        public const int SideLenQuarter = 5;
         public const int Allbits = (1 << SideLen) - 1;
         public static readonly Region[] Rows = Enumerable.Range(0, SideLen).Select(i => Region.Create(RegionType.Row, i)).ToArray();
         public static readonly Region[] Cols = Enumerable.Range(0, SideLen).Select(i => Region.Create(RegionType.Col, i)).ToArray();
         public static readonly Region[] Sqs = Enumerable.Range(0, SideLen).Select(i => Region.Create(RegionType.Sq, i)).ToArray();
         public static bool InTe;
-        static readonly int[][] RowCells = Enumerable.Range(0, SideLen).Select(index => Enumerable.Range(0, SideLen).ToArray().Select(col => index * SideLen + col).ToArray()).ToArray();
-        static readonly int[][] ColCells = Enumerable.Range(0, SideLen).Select(index => Enumerable.Range(0, SideLen).ToArray().Select(row => row * SideLen + index).ToArray()).ToArray();
+        static readonly int[][] RowCells = Enumerable.Range(0, SideLen).Select(index => Enumerable.Range(0, SideLen).ToArray().Select(col => index*SideLen + col).ToArray()).ToArray();
+        static readonly int[][] ColCells = Enumerable.Range(0, SideLen).Select(index => Enumerable.Range(0, SideLen).ToArray().Select(row => row*SideLen + index).ToArray()).ToArray();
 
         static readonly int[][] SqCells = Enumerable.Range(0, SideLen).Select(index => {
-            var rowStart = index / SideLenQuarter * SideLenQuarter;
-            var colStart = index % SideLenQuarter * SideLenQuarter;
+            var rowStart = index/SideLenQuarter*SideLenQuarter;
+            var colStart = index%SideLenQuarter*SideLenQuarter;
             return (from row in Enumerable.Range(0, SideLenQuarter).ToArray().Select(i => i + rowStart)
-                    from col in Enumerable.Range(0, SideLenQuarter).ToArray().Select(i => i + colStart)
-                    select row * SideLen + col).ToArray();
+                from col in Enumerable.Range(0, SideLenQuarter).ToArray().Select(i => i + colStart)
+                select row*SideLen + col).ToArray();
         }).ToArray();
 
         public static int TeNext;
-        public static int Te2Count;
 
         public static IEnumerable<int> Solve(IEnumerable<int> input) {
-            var empty = Enumerable.Range(0, SideLen * SideLen).Select(i => Allbits).ToArray();
+            var empty = Enumerable.Range(0, SideLen*SideLen).Select(i => Allbits).ToArray();
             var grid = input.Select(Valdex.Create).Aggregate(empty, InitCell);
             Console.WriteLine("Start " + grid.Sum((Func<int, int>)BitArrayEx.PopCount));
-            return RunAll(new[] { TrialError(Run(LastRemaining)), SetIsolation, LastRemaining })(grid);
+            return RunAll(new[] {TrialError(RunAll(new[] {(Func<int[], int[]>)LastRemaining})), SetIsolation, LastRemaining})(grid);
         }
 
         public static int[] LastRemaining(int[] grid) {
             var ret = Cols.Concat(Rows).Concat(Sqs).Aggregate(grid, LastRemaining2);
             if (!InTe) {
-                Console.WriteLine(grid.PopCount() + " LR " + ret.PopCount());
+                Console.WriteLine(grid.PopCount() + " LR " + (ret.PopCount() - grid.PopCount()));
             }
             return ret;
         }
@@ -47,7 +46,6 @@ namespace SudokuFunctional {
         public static int[] LastRemaining3(int[] grid, Region region, int value) {
             var p = (1 << value);
             var cells = region.Cells();
-            //var first = GetFirst(-1, 0, cells, grid, p);
             var first = -1;
             foreach (var i in cells) {
                 if ((grid[i] & p) != 0) {
@@ -62,10 +60,10 @@ namespace SudokuFunctional {
 
         public static int[] SetIsolation(int[] grid) {
             var ret = (from i in Enumerable.Range(0, grid.Length)
-                       from region in i.Intersections()
-                       select Tuple.Create(i, region))
+                from region in i.Intersections()
+                select Tuple.Create(i, region))
                 .Aggregate(grid, (gridx, tuple) => SetIsolation2(gridx, tuple.Item2, gridx[tuple.Item1]));
-            Console.WriteLine(grid.PopCount() + " SI " + ret.PopCount());
+            Console.WriteLine(grid.PopCount() + " SI " + (ret.PopCount() - grid.PopCount()));
             return ret;
         }
 
@@ -78,19 +76,19 @@ namespace SudokuFunctional {
         public static Func<int[], int[]> TrialError(Func<int[], int[]> f) {
             return grid => {
                 InTe = true;
-                var ret = Enumerable.Range(2, grid.Length)
+                var ret = Enumerable.Range(TeNext, grid.Length)
                     .Select(i => {
                         TeNext = i;
-                        return TrialError2(f, grid, i % (SideLen * SideLen));
+                        return TrialError2(f, grid, i%(SideLen*SideLen));
                     })
                     .FirstOrDefault(g2 => !g2.SequenceEqual(grid)) ?? grid;
-                InTe = false;Console.WriteLine(grid.PopCount() + " TE " + ret.PopCount());
+                InTe = false;
+                Console.WriteLine(grid.PopCount() + " TE " + (ret.PopCount() - grid.PopCount()));
                 return ret;
             };
         }
 
         static int[] TrialError2(Func<int[], int[]> f, int[] grid, int index) {
-            ++Te2Count;
             var p = grid[index];
             return Enumerable.Range(0, SideLen)
                 .Where(value => (p | (1 << value)) == p)
@@ -107,22 +105,15 @@ namespace SudokuFunctional {
             return grid.All(i => i != 0);
         }
 
-        public static Func<int[], int[]> Run(Func<int[], int[]> f) {
-            return grid => {
-                var gridx = f(grid);
-                return gridx.SequenceEqual(grid) ? grid : Run(f)(gridx);
-            };
-        }
-
-        public static Func<int[], int[]> RunAll(IEnumerable<Func<int[], int[]>> fs) {
+        public static Func<T, T> RunAll<T>(IEnumerable<Func<T, T>> fs) {
             var fsp = fs.ToArray();
             if (fsp.Length == 0) {
-                return grid=>grid;
+                return grid => grid;
             }
             return grid => {
                 var gridx = RunAll(fsp.Skip(1))(grid);
                 var gridy = fsp[0](gridx);
-                return gridy.SequenceEqual(gridx) ? gridx : RunAll(fsp)(gridy);
+                return gridy.Equals(gridx) ? gridx : RunAll(fsp)(gridy);
             };
         }
 
@@ -141,7 +132,7 @@ namespace SudokuFunctional {
                 return grid;
             }
             var g2 = new int[grid.Length];
-            Buffer.BlockCopy(grid, 0, g2, 0, grid.Length * 4);
+            Buffer.BlockCopy(grid, 0, g2, 0, grid.Length*4);
             g2[i] = p2;
             return p2.Solved() ? g2.Isolate(i) : g2;
         }
@@ -150,7 +141,7 @@ namespace SudokuFunctional {
             var p = grid[i];
             var bros = i.Brothers().ToArray();
             var g2 = new int[grid.Length];
-            Buffer.BlockCopy(grid, 0, g2, 0, grid.Length * 4);
+            Buffer.BlockCopy(grid, 0, g2, 0, grid.Length*4);
             foreach (var bro in bros) {
                 g2[bro] = grid[bro] & (~p);
             }
@@ -159,9 +150,9 @@ namespace SudokuFunctional {
 
         public static IEnumerable<int> Brothers(this int i) {
             return (from region in i.Intersections()
-                    from cell in region.Cells()
-                    where cell != i
-                    select cell).Distinct();
+                from cell in region.Cells()
+                where cell != i
+                select cell).Distinct();
         }
 
         public static int[] Cells(this Region region) {
@@ -180,11 +171,11 @@ namespace SudokuFunctional {
         }
 
         public static IEnumerable<Region> Intersections(this int i) {
-            var row = i / SideLen;
-            var col = i % SideLen;
+            var row = i/SideLen;
+            var col = i%SideLen;
             yield return Rows[row];
             yield return Cols[col];
-            yield return Sqs[row / SideLenQuarter * SideLenQuarter + col / SideLenQuarter];
+            yield return Sqs[row/SideLenQuarter*SideLenQuarter + col/SideLenQuarter];
         }
 
 
